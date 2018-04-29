@@ -1,5 +1,5 @@
 import numpy as np
-
+import pandas as pd
 
 def extract_vgg16_features(x):
     from keras.preprocessing.image import img_to_array, array_to_img
@@ -305,6 +305,51 @@ def load_stl(data_path='./data/stl'):
     # save features
     np.save(data_path + '/stl_features.npy', features)
     print('features saved to ' + data_path + '/stl_features.npy')
+
+    return features, y
+
+
+def extract_features(data,gene_select=1000):
+    # sehng xu pai lie qu zuida de ruo gan ji yin, ran hou dao xu
+    selected = np.std(data, axis=0)
+    selected =selected.argsort()[-gene_select:][::-1]
+    h_data = data[:, selected]
+    return h_data
+
+
+
+def load_mydata(model_name, gene_select=1000, data_path='F:/project/data/'):
+    # import os
+    # assert os.path.exists(data_path + '/stl_features.npy') or not os.path.exists(data_path + '/train_X.bin'), \
+    #     "No data! Use %s/get_data.sh to get data ready, then come back" % data_path
+
+    # get labels
+    labelpath = data_path+model_name+'_label.csv'
+    labeldf = pd.read_csv(labelpath,header=None,index_col=None)
+    y = labeldf.values
+    y = y.transpose()
+    y = np.squeeze(y)
+
+    # if features are ready, return them
+    # if os.path.exists(data_path + '/stl_features.npy'):
+    #     return np.load(data_path + '/stl_features.npy'), y
+
+    # get data
+    datapath = data_path+'h_'+model_name+'.train'
+    datadf = pd.read_csv(datapath)
+    x = datadf.values
+
+    # # extract features
+    # features = extract_vgg16_features(x)
+    x = extract_features(x,gene_select=gene_select)
+
+    # scale to [0,1]
+    from sklearn.preprocessing import MinMaxScaler
+    features = MinMaxScaler().fit_transform(x)
+
+    # save features
+    # np.save(data_path + '/stl_features.npy', features)
+    # print('features saved to ' + data_path + '/stl_features.npy')
 
     return features, y
 

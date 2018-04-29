@@ -103,8 +103,9 @@ class ClusteringLayer(Layer):
             q: student's t-distribution, or soft labels for each sample. shape=(n_samples, n_clusters)
         """
         q = 1.0 / (1.0 + (K.sum(K.square(K.expand_dims(inputs, axis=1) - self.clusters), axis=2) / self.alpha))
+        #self.clusters:(n_clusters, embedding dim), inputs:(None, embedding dim)
         q **= (self.alpha + 1.0) / 2.0
-        q = K.transpose(K.transpose(q) / K.sum(q, axis=1))
+        q = K.transpose(K.transpose(q) / K.sum(q, axis=1)) # q:(None,n_clusters)
         return q
 
     def compute_output_shape(self, input_shape):
@@ -243,8 +244,8 @@ class DEC(object):
                     break
 
             # train on batch
-            # if index == 0:
-            #     np.random.shuffle(index_array)
+            if index == 0:
+                np.random.shuffle(index_array)
             idx = index_array[index * batch_size: min((index+1) * batch_size, x.shape[0])]
             self.model.train_on_batch(x=x[idx], y=p[idx])
             index = index + 1 if (index + 1) * batch_size <= x.shape[0] else 0
@@ -279,38 +280,48 @@ if __name__ == "__main__":
     parser.add_argument('--tol', default=0.001, type=float)
     parser.add_argument('--ae_weights', default=None)
     parser.add_argument('--save_dir', default='results')
+    parser.add_argument('--model_name', default='results')
+    parser.add_argument('--gene_select', default=1000,type=int)
     args = parser.parse_args()
     print(args)
+    save_dir = args.save_dir+'/'+args.model_name
     import os
-    if not os.path.exists(args.save_dir):
-        os.makedirs(args.save_dir)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    # # load dataset
+    # from datasets import load_data
+    # x, y = load_data(args.dataset)
+    # n_clusters = len(np.unique(y))
 
     # load dataset
-    from datasets import load_data
-    x, y = load_data(args.dataset)
+    from datasets import load_mydata
+    x, y = load_mydata(args.model_name,gene_select=args.gene_select)
     n_clusters = len(np.unique(y))
+
+
 
     init = 'glorot_uniform'
     pretrain_optimizer = 'adam'
     # setting parameters
-    if args.dataset == 'mnist' or args.dataset == 'fmnist':
-        update_interval = 140
-        pretrain_epochs = 300
-        init = VarianceScaling(scale=1. / 3., mode='fan_in',
-                               distribution='uniform')  # [-limit, limit], limit=sqrt(1./fan_in)
-        pretrain_optimizer = SGD(lr=1, momentum=0.9)
-    elif args.dataset == 'reuters10k':
-        update_interval = 30
-        pretrain_epochs = 50
-        init = VarianceScaling(scale=1. / 3., mode='fan_in',
-                               distribution='uniform')  # [-limit, limit], limit=sqrt(1./fan_in)
-        pretrain_optimizer = SGD(lr=1, momentum=0.9)
-    elif args.dataset == 'usps':
-        update_interval = 30
-        pretrain_epochs = 50
-    elif args.dataset == 'stl':
-        update_interval = 30
-        pretrain_epochs = 10
+    # if args.dataset == 'mnist' or args.dataset == 'fmnist':
+    #     update_interval = 140
+    #     pretrain_epochs = 300
+    #     init = VarianceScaling(scale=1. / 3., mode='fan_in',
+    #                            distribution='uniform')  # [-limit, limit], limit=sqrt(1./fan_in)
+    #     pretrain_optimizer = SGD(lr=1, momentum=0.9)
+    # elif args.dataset == 'reuters10k':
+    #     update_interval = 30
+    #     pretrain_epochs = 50
+    #     init = VarianceScaling(scale=1. / 3., mode='fan_in',
+    #                            distribution='uniform')  # [-limit, limit], limit=sqrt(1./fan_in)
+    #     pretrain_optimizer = SGD(lr=1, momentum=0.9)
+    # elif args.dataset == 'usps':
+    #     update_interval = 30
+    #     pretrain_epochs = 50
+    # elif args.dataset == 'stl':
+    #     update_interval = 30
+    #     pretrain_epochs = 10
 
     if args.update_interval is not None:
         update_interval = args.update_interval
@@ -318,12 +329,12 @@ if __name__ == "__main__":
         pretrain_epochs = args.pretrain_epochs
 
     # prepare the DEC model
-    dec = DEC(dims=[x.shape[-1], 500, 500, 2000, 10], n_clusters=n_clusters, init=init)
+    dec = DEC(dims=[x.shape[-1], 300, 100, 30, 10], n_clusters=n_clusters, init=init)
 
     if args.ae_weights is None:
         dec.pretrain(x=x, y=y, optimizer=pretrain_optimizer,
                      epochs=pretrain_epochs, batch_size=args.batch_size,
-                     save_dir=args.save_dir)
+                     save_dir=save_dir)
     else:
         dec.autoencoder.load_weights(args.ae_weights)
 
@@ -331,6 +342,6 @@ if __name__ == "__main__":
     t0 = time()
     dec.compile(optimizer=SGD(0.01, 0.9), loss='kld')
     y_pred = dec.fit(x, y=y, tol=args.tol, maxiter=args.maxiter, batch_size=args.batch_size,
-                     update_interval=update_interval, save_dir=args.save_dir)
+                     update_interval=update_interval, save_dir=save_dir)
     print('acc:', metrics.acc(y, y_pred))
     print('clustering time: ', (time() - t0))
