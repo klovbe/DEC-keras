@@ -308,6 +308,76 @@ def load_stl(data_path='./data/stl'):
 
     return features, y
 
+def sizefactor(df):
+    log = np.log(df+1)
+    col_mean = np.mean(log, axis=0)
+    col_mean = np.expand_dims(np.exp(col_mean), 0)
+    div = np.divide(np.exp(log), col_mean)
+    sf = np.median(div, axis=1)
+    sf = np.expand_dims(sf, 1)
+    div = np.log(np.divide(df, sf)+1)
+    return div
+
+def row_normal(data, factor=1e6):
+    row_sum = np.sum(data, axis=1)
+    row_sum = np.expand_dims(row_sum, 1)
+    div = np.divide(data, row_sum)
+    div = np.log(1 + factor * div)
+    return div
+
+def load_newdata(args):
+    print("make dataset from {}...".format(args.train_datapath))
+    df = pd.read_csv(args.train_datapath, sep=",", index_col=0)
+    if args.trans:
+        df = df.transpose()
+    print("have {} samples, {} features".format(df.shape[0], df.shape[1]))
+    # o_len = len(df)
+    # x = 0
+    # index_list = []
+    # i_index_list =[]
+    # for i, row in enumerate(df.index):
+    #   if (df.loc[row, :] > 0.0).sum() > x:
+    #     index_list.append(row)
+    #     i_index_list.append(i)
+    # df = df.loc[index_list, :]
+    # if len(df) < o_len:
+    #   i_df = pd.DataFrame(data=i_index_list)
+    #   i_df.to_csv("{}_filter_label.csv".format(FLAGS.model_name))
+    # # print(df.shape)
+    # y = 0
+    # col_list = []
+    # for col in df.columns:
+    #   if (df[col] > 0.0).sum() > y:
+    #     col_list.append(col)
+    # df = df[col_list]
+    # print("after filtering, have {} samples, {} features".format(df.shape[0], df.shape[1]))
+    if args.data_type == 'count':
+        df = row_normal(df)
+        # df = sizefactor(df)
+    elif args.data_type == 'rpkm':
+        df = np.log(df + 1)
+    if args.gene_select is not None:
+        selected = np.std(df, axis=0)
+        selected =selected.argsort()[-args.gene_select:][::-1]
+        df = df[selected.index]
+    if args.gene_scale:
+        from sklearn.preprocessing import MinMaxScaler
+        scaler = MinMaxScaler()
+        data = scaler.fit_transform(df)
+        df = pd.DataFrame(data=data, columns=df.columns)
+    columns = list(df.columns)
+    index = df.index
+    data = df.values
+    samples, feature_nums = data.shape
+    train_size = np.int(np.round(samples * 0.9))
+    val_size = samples - train_size
+    # model_class = model_class_dict[FLAGS.model_class]
+    # print(np.linalg.matrix_rank(sample_dataset.data))
+    df_shuffle = df.sample(frac=1).reset_index(drop=True)
+    df_train = df_shuffle.iloc[0:train_size]
+    df_val = df_shuffle.iloc[train_size:]
+    return df_train.values, df_val.values, df.values, columns, index
+
 
 def extract_features(data,gene_select=1000):
     # sehng xu pai lie qu zuida de ruo gan ji yin, ran hou dao xu
@@ -315,8 +385,6 @@ def extract_features(data,gene_select=1000):
     selected =selected.argsort()[-gene_select:][::-1]
     h_data = data[:, selected]
     return h_data
-
-
 
 def load_mydata(model_name, gene_select=1000, data_path='F:/project/data/'):
     # import os

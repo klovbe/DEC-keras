@@ -205,6 +205,12 @@ class DEC(object):
         print('Initializing cluster centers with k-means.')
         kmeans = KMeans(n_clusters=self.n_clusters, n_init=20)
         y_pred = kmeans.fit_predict(self.encoder.predict(x))
+        if y is not None:
+            acc = np.round(metrics.acc(y, y_pred), 5)
+            nmi = np.round(metrics.nmi(y, y_pred), 5)
+            ari = np.round(metrics.ari(y, y_pred), 5)
+            print('acc = %.5f, nmi = %.5f, ari = %.5f' % (acc, nmi, ari))
+
         y_pred_last = np.copy(y_pred)
         self.model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
 
@@ -329,7 +335,7 @@ if __name__ == "__main__":
         pretrain_epochs = args.pretrain_epochs
 
     # prepare the DEC model
-    dec = DEC(dims=[x.shape[-1], 300, 100, 30, 10], n_clusters=n_clusters, init=init)
+    dec = DEC(dims=[x.shape[-1], 2000, 300, 100, 30, 10], n_clusters=n_clusters, init=init)
 
     if args.ae_weights is None:
         dec.pretrain(x=x, y=y, optimizer=pretrain_optimizer,

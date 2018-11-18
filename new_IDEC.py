@@ -40,7 +40,7 @@ class IDEC(DEC):
         # print(self.model)
 
     def compile(self, optimizer, loss, loss_weights):
-        self.model.compile(optimizer=optimizer, loss=loss,loss_weights=loss_weights)
+        self.model.compile(optimizer=optimizer, loss=loss, loss_weights=loss_weights)
 
     def fit(self, x, y=None, maxiter=2e4, batch_size=256, tol=1e-3,
             update_interval=140, save_dir='./results/temp'):
@@ -53,6 +53,11 @@ class IDEC(DEC):
         print('Initializing cluster centers with k-means.')
         kmeans = KMeans(n_clusters=self.n_clusters, n_init=20)
         y_pred = kmeans.fit_predict(self.encoder.predict(x))
+        if y is not None:
+            acc = np.round(metrics.acc(y, y_pred), 5)
+            nmi = np.round(metrics.nmi(y, y_pred), 5)
+            ari = np.round(metrics.ari(y, y_pred), 5)
+            print('acc = %.5f, nmi = %.5f, ari = %.5f' % (acc, nmi, ari))
         y_pred_last = np.copy(y_pred)
         self.model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
 
@@ -128,7 +133,7 @@ if __name__ == "__main__":
     parser.add_argument('--ae_weights', default=None)
     parser.add_argument('--save_dir', default='results')
     parser.add_argument('--model_name', default='results')
-    parser.add_argument('--gene_select', default=1000,type=int)
+    parser.add_argument('--gene_select', default=1000, type=int)
     parser.add_argument('--gamma',default=0.1,type=float)
     args = parser.parse_args()
     print(args)
@@ -177,7 +182,7 @@ if __name__ == "__main__":
         pretrain_epochs = args.pretrain_epochs
 
     # # prepare the DEC model
-    Idec = IDEC(dims=[x.shape[-1], 300, 100, 30, 10], n_clusters=n_clusters, gamma=args.gamma)
+    Idec = IDEC(dims=[x.shape[-1], 2000, 300, 100, 30, 10], n_clusters=n_clusters, gamma=args.gamma)
     #
     if args.ae_weights is None:
         Idec.pretrain(x=x, y=y, optimizer=pretrain_optimizer,
