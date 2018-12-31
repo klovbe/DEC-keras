@@ -1,3 +1,10 @@
+import os
+
+os.environ["LD_LIBRARY_PATH"] = "/home/xysmlx/anaconda3/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64:" \
+                                "/usr/local/cuda/lib64/libcublas.so.8.0"
+
+print(os.environ.get("LD_LIBRARY_PATH"))
+
 class A(object):
     def __init__(self, xing, gender):
         self.namea = "aaa"
