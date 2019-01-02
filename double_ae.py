@@ -62,7 +62,7 @@ def row_normal(data, factor=1e6):
     return div
 
 
-def load_newdata(train_datapath, metric='pearson', gene_scale=True, data_type='count', trans=True):
+def load_newdata(train_datapath, metric='pearson', gene_scale=False, data_type='count', trans=True):
     print("make dataset from {}...".format(train_datapath))
     df = pd.read_csv(train_datapath, sep=",", index_col=0)
     if trans:
@@ -74,13 +74,6 @@ def load_newdata(train_datapath, metric='pearson', gene_scale=True, data_type='c
     elif data_type == 'rpkm':
         df = np.log(df + 1)
     df = df.transpose()
-    data_min = np.min(df.values, axis=0).reshape([1, df.shape[1]])
-    data_max = np.max(df.values, axis=0).reshape([1, df.shape[1]])
-    minmax = np.append(data_min, data_max, axis=0)
-    minmax_df = pd.DataFrame(data=minmax, index=['min', 'max'])
-    minmax_path = "{}/minmax_{}.csv".format(outdir, name)
-    if os.path.exists(minmax_path) is False:
-        minmax_df.to_csv(minmax_path,index=True)
     if gene_scale:
         from sklearn.preprocessing import MinMaxScaler
         scaler = MinMaxScaler()
@@ -90,7 +83,7 @@ def load_newdata(train_datapath, metric='pearson', gene_scale=True, data_type='c
 
 
 def batch_generator(X, graph, batch_size, shuffle, beta1=1, beta2=1):
-    row_indices, col_indices = graph.nonzero()
+    row_indices, col_indices = X.nonzero()
     sample_index = np.arange(row_indices.shape[0])
     number_of_batches = row_indices.shape[0] // batch_size
     counter = 0
@@ -100,16 +93,16 @@ def batch_generator(X, graph, batch_size, shuffle, beta1=1, beta2=1):
         batch_index = \
             sample_index[batch_size * counter: batch_size * (counter + 1)]
         X_batch_v_i = X[row_indices[batch_index], :]
-        X_batch_v_j = X[col_indices[batch_index], :]
+        X_batch_v_j = X.transpose()[col_indices[batch_index], :]
         InData = np.append(X_batch_v_i, X_batch_v_j, axis=1)
 
         B_i = np.ones(X_batch_v_i.shape)*beta1
         B_i[X_batch_v_i != 0] = beta2
         B_j = np.ones(X_batch_v_j.shape)*beta1
         B_j[X_batch_v_j != 0] = beta2
-        X_ij = graph[row_indices[batch_index], col_indices[batch_index]]
-        deg_i = np.sum(graph[row_indices[batch_index], :], 1).reshape((batch_size, 1))
-        deg_j = np.sum(graph[col_indices[batch_index], :], 1).reshape((batch_size, 1))
+        X_ij = X[row_indices[batch_index], col_indices[batch_index]]
+        deg_i = np.sum(X[row_indices[batch_index], :], 1).reshape((batch_size, 1))
+        deg_j = np.sum(X.transpose()[col_indices[batch_index], :], 1).reshape((batch_size, 1))
         a1 = np.append(B_i, deg_i, axis=1)
         a2 = np.append(B_j, deg_j, axis=1)
         OutData = [a1, a2, X_ij.T]
@@ -209,6 +202,60 @@ class Autoencoder():
                 encoder = Model(ae.input, ae.layers[1].output)
                 X_train_tmp = encoder.predict(X_train_tmp)
 
+
+    def pretrain1(self):
+        X_train_tmp = train_set
+        self.trained_encoders = []
+        self.trained_decoders = []
+        for i in range(len(dims) - 1):
+            print('Pre-training the layer: Input {} -> {} -> Output {}'.format(dims1[i], dims1[i + 1], dims1[i]))
+            # Create AE and training
+            ae = Sequential()
+            if i == 0:
+                print(i)
+                if i == 0:
+                    x = Input(shape=(dims[0],), name='input')
+                    x_drop = Dropout(dr_rate)(x)
+                    h = Dense(dims[i + 1], input_dim=dims[i], activation='relu',
+                              W_regularizer=Reg.l1_l2(l1=nu1, l2=nu2),
+                              name='encoder_%d' % i)(x_drop)
+                    y = Dense(dims[i], input_dim=dims[i + 1], W_regularizer=Reg.l1_l2(l1=nu1, l2=nu2),
+                              name='decoder_%d' % i)(h)
+                    x_diff = Subtract()([x, y])
+                    ae = Model(inputs=x, outputs=x_diff)
+                    ae.compile(loss=weighted_mse_pre, optimizer='adam')
+                    ae.fit(x = train_set, y= B, batch_size=batch_size, epochs=epochs_pretrain)
+                    ae.summary()
+                    # Store trainined weight
+                    self.trained_encoders.append(ae.layers[2])
+                    self.trained_decoders.append(ae.layers[3])
+                    # Update training data
+                    encoder = Model(ae.input, ae.layers[2].output)
+                    X_train_tmp = encoder.predict(X_train_tmp)
+            else:
+                if i == len(dims) - 2:
+                    ae.add(Dropout(dr_rate))
+                    ae.add(Dense(dims[i + 1], input_dim=dims[i], W_regularizer=Reg.l1_l2(l1=nu1, l2=nu2),
+                                 name='encoder_%d' % i))
+                    ae.add(Dense(dims[i], input_dim=dims[i + 1], activation='relu', W_regularizer=Reg.l1_l2(l1=nu1, l2=nu2),
+                                 name='decoder_%d' % i))
+                else:
+                    ae.add(Dropout(dr_rate))
+                    ae.add(Dense(dims[i + 1], input_dim=dims[i], activation='relu', W_regularizer=Reg.l1_l2(l1=nu1, l2=nu2),
+                                 name='encoder_%d' % i))
+                    ae.add(Dense(dims[i], input_dim=dims[i + 1], activation='relu', W_regularizer=Reg.l1_l2(l1=nu1, l2=nu2),
+                                 name='decoder_%d' % i))
+                ae.compile(loss='mean_squared_error', optimizer='adam')
+                ae.fit(X_train_tmp, X_train_tmp, batch_size=batch_size, epochs=epochs_pretrain)
+                ae.summary()
+                # Store trainined weight
+                self.trained_encoders.append(ae.layers[1])
+                self.trained_decoders.append(ae.layers[2])
+                # Update training data
+                encoder = Model(ae.input, ae.layers[1].output)
+                X_train_tmp = encoder.predict(X_train_tmp)
+
+
     def ae_build(self):
         print('Fine-tuning')
         self.decoders = Sequential()
@@ -223,8 +270,6 @@ class Autoencoder():
         self.x = Input(shape=(dims[0],), name='input')
         self.h = self.encoders(self.x)
         self.y = self.decoders(self.h)
-        self.x_diff = Subtract()([self.x, self.y])
-        self.ae = Model(inputs=self.x, outputs=self.x_diff)
         self.autoencoders = Model(inputs=self.x, outputs=self.y)
 
     def graph_ae_buld(self):
@@ -243,12 +288,12 @@ class Autoencoder():
         self.graph_model = Model(input=x_in, output=[x_diff1, x_diff2, y_diff])
 
     def train_ae(self):
-        self.ae.compile(optimizer='adam', loss=weighted_mse_pre)
+        self.autoencoders.compile(optimizer='adam', loss=weighted_mse_pre)
         checkpoint = ModelCheckpoint(filepath=outdir + 'best_ae.h5', monitor='loss', save_best_only=True,
                                      save_weights_only=True)
-        self.history = self.ae.fit(x = train_set, y= B, batch_size=batch_size,steps_per_epoch=steps_per_epoch,
-                                             nb_epoch=epochs_ae, callbacks=[checkpoint])
-        self.ae.save_weights('{}/autoencoder_ae.h5'.format(outdir))
+        self.history = self.autoencoders.fit(x = train_set, y= B, batch_size=batch_size,steps_per_epoch=steps_per_epoch,
+                                             nb_epoch=epochs_pretrain, callbacks=[checkpoint])
+        self.autoencoders.save_weights('{}/autoencoder_ae.h5'.format(outdir))
 
 
     def train_graph(self):
@@ -258,8 +303,8 @@ class Autoencoder():
                                      save_weights_only=True)
         self.history = self.graph_model.fit_generator(batch_generator(train_set, graph, batch_size=batch_size
                                                                        , shuffle=True, beta1=beta1, beta2=beta2),
-                                                       steps_per_epoch=steps_graph,
-                                                       epochs=epochs_graph, callbacks=[checkpoint])
+                                                       steps_per_epoch=steps_per_epoch,
+                                                       epochs=epochs_ae, callbacks=[checkpoint])
         self.graph_model.save_weights('{}/autoencoder_graph.h5'.format(outdir))
 
 
@@ -267,28 +312,17 @@ class Autoencoder():
         self.autoencoders.load_weights('{}/autoencoder_pretrain.h5'.format(outdir))
 
 
-    def save_imputation(self, sta):
+    def save_imputation(self):
         mask_data = train_set == 0.0
         mask_data = np.float32(mask_data)
         decoder_out = self.autoencoders.predict(train_set)
         decoder_out_replace = mask_data * decoder_out + train_set
         df_raw = pd.DataFrame(decoder_out)
-        df_raw.to_csv('{}/autoencoder_{}.csv'.format(outdir, sta), index=None, float_format='%.4f')
+        df_raw.to_csv('{}/autoencoder.csv'.format(outdir), index=None, float_format='%.4f')
         df_replace = pd.DataFrame(decoder_out_replace)
-        df_replace.to_csv('{}/autoencoder_r_{}.csv'.format(outdir, sta), index=None, float_format='%.4f')
-
+        df_replace.to_csv('{}/autoencoder_r.csv'.format(outdir), index=None, float_format='%.4f')
 
     def plot_loss(self):
-        f = plt.figure()
-        plt.plot(self.history.history['loss'])
-        plt.title('model loss')
-        plt.ylabel('loss')
-        plt.xlabel('epoch')
-        plt.show()
-        f.savefig("{}/{}_ae.png".format(outdir, name), bbox_inches='tight')
-
-
-    def plot_loss_graph(self):
         f = plt.figure()
         plt.plot(self.history.history['loss'])
         plt.title('model loss')
@@ -325,7 +359,7 @@ if __name__ == "__main__":
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--n_iters_ae', default=2000, type=int)
-    parser.add_argument('--n_iters_pretrain', default=1000, type=int)
+    parser.add_argument('--n_iters_pretrain', default=800, type=int)
     parser.add_argument('--beta1', default=0.1, type=float)
     parser.add_argument('--beta2', default=1.0, type=float)
     parser.add_argument('--alpha', default=0.01, type=float)
@@ -352,57 +386,34 @@ if __name__ == "__main__":
     beta2 = args.beta2
     alpha = args.alpha
 
-
-
-
-    if alpha == 0:
-        train_df = load_newdata(train_datapath, data_type=args.data_type)
-        train_set = train_df.values
-        nsamples = len(train_set)
-        steps_per_epoch = nsamples // batch_size
-        if nsamples < batch_size:
-            steps_per_epoch = nsamples
-        B = np.ones(train_set.shape) * beta1
-        B[train_set != 0] = beta2
-
-        dims = [train_set.shape[1], 500, 500, 2000, 10]
-
-        epochs_pretrain = max(n_iters_pretrain // steps_per_epoch, 1)
-        epochs_ae = max(n_iters_ae // steps_per_epoch, 1)
-        ae = Autoencoder()
-        ae.pretrain()
-        ae.ae_build()
-        ae.train_ae()
-        ae.save_imputation('ae')
-        ae.plot_loss()
+    train_df= load_newdata(train_datapath, data_type=args.data_type)
+    train_set = train_df.values
+    nsamples = len(train_set)
+    steps_per_epoch = nsamples // batch_size
+    if nsamples < batch_size:
+        steps_per_epoch = nsamples
+    if name == 'zeisel' or name == 'zeisel_ercc':
+        graph_df = pd.read_csv("/home/xysmlx/data/ppi_mouse.csv", sep=",", index_col=0)
+    elif name == 'ziegenhain':
+        graph_df = pd.read_csv("/home/xysmlx/data/ppi_mouse_geneid.csv", sep=",", index_col=0)
     else:
-        train_df = load_newdata(train_datapath, data_type=args.data_type)
-        train_set = train_df.values
-        nsamples = len(train_set)
-        steps_per_epoch = nsamples // batch_size
-        if nsamples < batch_size:
-            steps_per_epoch = nsamples
-        if name == 'zeisel' or name == 'zeisel_ercc':
-            graph_df = pd.read_csv("/home/xysmlx/data/ppi_mouse.csv", sep=",", index_col=0)
-        elif name == 'ziegenhain':
-            graph_df = pd.read_csv("/home/xysmlx/data/ppi_mouse_geneid.csv", sep=",", index_col=0)
-        else:
-            graph_df = pd.read_csv("/home/xysmlx/data/ppi_human.csv", sep=",", index_col=0)
-        graph = extend_graph(graph_df, list(train_df.index))
-        steps_graph = graph.nonzero()[1].shape[0] // batch_size
-        print(steps_graph)
-        B = np.ones(train_set.shape) * beta1
-        B[train_set != 0] = beta2
+        graph_df = pd.read_csv("/home/xysmlx/data/ppi_human.csv", sep=",", index_col=0)
+    graph = extend_graph(graph_df, list(train_df.index))
+    B = np.ones(train_set.shape) * beta1
+    B[train_set != 0] = beta2
 
-        dims = [train_set.shape[1], 500, 500, 2000, 10]
 
-        epochs_pretrain = max(n_iters_pretrain // steps_per_epoch, 1)
-        epochs_ae = max(n_iters_ae // steps_per_epoch, 1)
-        epochs_graph = max(n_iters_ae // steps_graph, 2)
-        ae = Autoencoder()
-        ae.pretrain()
-        ae.ae_build()
-        ae.graph_ae_buld()
-        ae.train_graph()
-        ae.save_imputation('graph')
-        ae.plot_loss_graph()
+    dims = [train_set.shape[1], 500, 500, 2000, 10]
+
+    epochs_pretrain = max(n_iters_pretrain // steps_per_epoch, 1)
+    epochs_ae = max(n_iters_ae // steps_per_epoch, 1)
+
+    optimizer = SGD(lr=0.1, momentum=0.99)
+
+    ae = Autoencoder()
+    ae.pretrain()
+    ae.ae_build()
+    ae.graph_ae_buld()
+    ae.train_graph()
+    ae.save_imputation()
+    ae.plot_loss()

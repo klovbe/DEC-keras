@@ -20,21 +20,18 @@ import time
 # python_path = "C:/Users/klovbe/Anaconda3/envs/tensorflow_gpu/python.exe"
 # script_path = "F:/project/DEC-keras/pure_ae.py"
 # done_path = "F:/project/DEC-keras/pure_ae/done_train.txt"
-# done_model_names = ["baron", "biase", "camp", "darmanis","deng", "goolam", "klein", "kolod","macosko", "patel",
-#            "pollen", "shekhar", "treutlein", "usoskin", "yan", 'zeisel']
-# done_model_names = ["zeiselercc","melanoma"]
-done_model_names = []
+done_model_names = ['zeiselercc',"melanoma"]
 data_dir = "/home/xysmlx/data/run_data"
 # data_dir = "F:/project/new_data/filter_samp/"
 # data_dir = "F:/project/new_data/ercc/"
 # data_dir = "F:/project/new_data/cluster/filter_data/new/"
 python_path = "/home/xysmlx/anaconda3/bin/python"
-script_path = "/home/xysmlx/python_project/DEC-keras/pure_ae_new.py"
+script_path = "/home/xysmlx/python_project/DEC-keras/graph_ae.py"
 done_path = "/home/xysmlx/python_project/DEC-keras/done_train.txt"
-date_now ="19_1_2"
+date_now = "19_1_2"
 # date_now = "rpkm_new_0731"
-run_log_path = "./pure_ae_new/{}/run_logs".format(date_now)
-out_path = "./pure_ae_new/{}/out".format(date_now)
+run_log_path = "./graph_ae/{}/run_logs".format(date_now)
+out_path = "./graph_ae/{}/out".format(date_now)
 
 
 name_list = os.listdir(data_dir)
@@ -43,17 +40,17 @@ name_list = os.listdir(data_dir)
 #     if "count.csv" in file:
 #         name_list_new.append(file)
 # name_list = name_list_new
-gamma_list = [0, 0.0001, 0.001, 0.01, 0.1, 1, 5, 10]
+alpha_list = [0, 0.001, 0.01]
 
 for i, file in enumerate(name_list):
     path = os.path.join(data_dir, file)
     name = file.split(".")[0].split("_")[0]
     data_type = file.split(".")[0].split("_")[1]
-    for gamma in gamma_list:
+    for alpha in alpha_list:
         run_log_path_name = os.path.join(run_log_path, name)
-        run_log_path_name = os.path.join(run_log_path_name, str(gamma))
+        run_log_path_name = os.path.join(run_log_path_name, str(alpha))
         out_dir = os.path.join(out_path, name)
-        out_dir = os.path.join(out_dir, str(gamma))
+        out_dir = os.path.join(out_dir, str(alpha))
         if os.path.exists(run_log_path_name) is False:
             os.makedirs(run_log_path_name)
         if os.path.exists(out_dir) is False:
@@ -69,10 +66,10 @@ for i, file in enumerate(name_list):
         "datapath":path,
         "outDir": out_dir,
         "run_log_path_name": run_log_path_name,
-        "gamma": gamma
+        "alpha": alpha
         }
         cmd = "python {script_path} --name={model_name}  --train_datapath={datapath} --data_type={data_type} " \
-            " --outDir={outDir}  --gamma={gamma} > {run_log_path_name}/{model_name}.log 2>&1".format(
+            " --outDir={outDir}  --alpha={alpha} > {run_log_path_name}/{model_name}.log 2>&1".format(
         **par_dict
             )
         print("running {}...".format(cmd))

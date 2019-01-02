@@ -45,6 +45,13 @@ def load_newdata(train_datapath, metric='pearson', gene_scale=True, data_type='c
         # df = sizefactor(df)
     elif data_type == 'rpkm':
         df = np.log(df + 1)
+    data_min = np.min(df.values, axis=0).reshape([1, df.shape[1]])
+    data_max = np.max(df.values, axis=0).reshape([1, df.shape[1]])
+    minmax = np.append(data_min, data_max, axis=0)
+    minmax_df = pd.DataFrame(data=minmax, index=['min', 'max'])
+    minmax_path = "{}/minmax_{}.csv".format(outdir, name)
+    if os.path.exists(minmax_path) is False:
+        minmax_df.to_csv(minmax_path,index=True)
     if gene_scale:
         from sklearn.preprocessing import MinMaxScaler
         scaler = MinMaxScaler()
@@ -53,7 +60,7 @@ def load_newdata(train_datapath, metric='pearson', gene_scale=True, data_type='c
     return df.values
 
 
-def batch_generator(X, batch_size, shuffle, beta=1, gamma=1):
+def batch_generator(X, batch_size, shuffle, beta=1.0, gamma=1.0):
     sample_index = np.arange(X.shape[0])
     number_of_batches = X.shape[0] // batch_size
     counter = 0
@@ -77,7 +84,7 @@ def batch_generator(X, batch_size, shuffle, beta=1, gamma=1):
         B_0[X_batch != 0] = 0.0
         B_0 = np.append(B_0, deg_0, axis=1)
         B = np.append(B, deg, axis=1)
-        OutData = [B_0, B]
+        OutData = [B, B_0]
         counter += 1
         yield InData, OutData
         if (counter == number_of_batches):
@@ -247,15 +254,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='train',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--batch_size', default=256, type=int)
-    parser.add_argument('--n_iters_ae', default=1000, type=int)
-    parser.add_argument('--n_iters_pretrain', default=500, type=int)
+    parser.add_argument('--n_iters_ae', default=2000, type=int)
+    parser.add_argument('--n_iters_pretrain', default=1000, type=int)
     parser.add_argument('--gamma', default=1.0, type=float)
     parser.add_argument('--beta', default=1.0, type=float)
     parser.add_argument('--dr_rate', default=0.2, type=float)
     parser.add_argument('--nu1', default=0.0, type=float)
     parser.add_argument('--nu2', default=0.0, type=float)
-    parser.add_argument("--train_datapath", default="/home/xysmlx/data/filter_data/zeisel_count.csv", type=str)
-    parser.add_argument("--data_type", default="count", type=str)
+    parser.add_argument("--train_datapath", default="/home/xysmlx/data/run_data/melanoma_logcounts.csv", type=str)
+    parser.add_argument("--data_type", default="logcounts", type=str)
     parser.add_argument("--outDir", default="/home/xysmlx/data/", type=str)
     parser.add_argument("--name", default="zeisel", type=str)
 

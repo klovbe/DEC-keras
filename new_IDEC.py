@@ -200,4 +200,8 @@ if __name__ == "__main__":
     print('acc:', metrics.acc(y, y_pred))
     print('clustering time: ', (time() - t0))
 
+    import keras
+    import keras.losses
+    losses
+
 
